@@ -29,6 +29,8 @@ export default function AppLayout({ children }) {
               <Link to="/employee/history" style={styles.link}>History</Link>
               <Link to="/employee/summary" style={styles.link}>Summary</Link>
               <Link to="/employee/profile" style={styles.link}>Profile</Link>
+              <Link to="/employee/calendar">Calendar</Link>
+
             </>
           )}
 

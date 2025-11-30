@@ -1,127 +1,170 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { FaUsersCog, FaUserClock, FaFileCsv, FaCode, FaDatabase, FaCheckCircle } from "react-icons/fa";
 
 export default function About() {
   return (
-    <div style={styles.wrap}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>About — Employee Attendance System</h1>
+    <div className="min-h-screen py-10 px-4 text-gray-200">
+      <div className="max-w-5xl mx-auto">
+        
+        {/* Header */}
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-bold text-white">About — Employee Attendance System</h1>
+          <p className="text-gray-400 mt-3 max-w-2xl mx-auto">
+            A complete MERN-based attendance management solution built for the 
+            Tap Academy evaluation — secure, fast, and easy to use for both employees 
+            and managers.
+          </p>
+        </div>
 
-        <p style={styles.lead}>
-          This project is a lightweight full-stack Employee Attendance System (MERN)
-          built for the Tap Academy selection process. It supports employee
-          check-in/check-out, monthly summaries, manager reporting and CSV export.
-        </p>
+        {/* Overview Card */}
+        <div className="bg-gray-900/60 p-6 rounded-xl shadow-md border border-gray-700 mb-10">
+          <h2 className="text-xl font-semibold mb-4 text-[#10b981]">📌 Project Overview</h2>
+          <p className="text-gray-300 leading-relaxed">
+            This system allows employees to mark daily attendance, view their monthly 
+            reports, and track their summary, while managers gain full visibility 
+            into team attendance, late arrivals, absentees, and CSV exports.
+          </p>
+        </div>
 
-        <section style={styles.section}>
-          <h3>Goals & Objectives</h3>
-          <ul>
-            <li>Provide an easy-to-use attendance workflow for employees.</li>
-            <li>Allow managers to view team attendance, filter records and export CSV reports.</li>
-            <li>Implement secure authentication (JWT) and role-based access control.</li>
-            <li>Deliver a small, testable codebase suitable for evaluation and extension.</li>
-          </ul>
-        </section>
+        {/* Highlights */}
+        <h2 className="text-xl font-semibold mb-4 text-[#10b981]">✨ Key Features</h2>
 
-        <section style={styles.section}>
-          <h3>Modules (mapped to project PDF)</h3>
-          <ol>
-            <li><b>Authentication</b> — Register, Login, JWT-based protected routes.</li>
-            <li><b>Employee</b> — Dashboard (today status), Check-in, Check-out, History, Monthly summary.</li>
-            <li><b>Manager</b> — Dashboard (team summary), Team Attendance (filters), Reports & CSV export.</li>
-            <li><b>Database</b> — MongoDB (Users, Attendance).</li>
-            <li><b>Frontend</b> — React, Redux Toolkit, React Router; responsive UI and charts.</li>
-          </ol>
-        </section>
+        <div className="grid md:grid-cols-2 gap-6 mb-10">
+          <FeatureCard 
+            icon={<FaUserClock size={26} />} 
+            title="Employee Panel"
+            items={[
+              "Daily Check-in / Check-out",
+              "Monthly summary",
+              "Attendance history",
+              "Calendar-based view",
+              "Last 7 days report",
+            ]}
+          />
 
-        <section style={styles.section}>
-          <h3>Key APIs (short list)</h3>
-          <table style={styles.table}>
-            <thead>
-              <tr><th>Endpoint</th><th>Purpose</th></tr>
+          <FeatureCard 
+            icon={<FaUsersCog size={26} />} 
+            title="Manager Panel"
+            items={[
+              "Team attendance dashboard",
+              "Filter by employee/date/status",
+              "Late arrivals list",
+              "Absent list",
+              "Weekly trend chart",
+            ]}
+          />
+
+          <FeatureCard 
+            icon={<FaFileCsv size={26} />} 
+            title="Reports & Export"
+            items={[
+              "Preview attendance data",
+              "Date range filter",
+              "Employee-wise export",
+              "CSV file download",
+              "Clean formatted records",
+            ]}
+          />
+
+          <FeatureCard 
+            icon={<FaCode size={26} />} 
+            title="Tech Stack"
+            items={[
+              "React + Redux (Frontend)",
+              "Node.js + Express (Backend)",
+              "MongoDB (Database)",
+              "JWT Authentication",
+              "Tailwind CSS + Chart.js",
+            ]}
+          />
+        </div>
+
+        {/* API Table */}
+        <h2 className="text-xl font-semibold mb-4 text-[#10b981]">🔗 API Endpoints</h2>
+
+        <div className="overflow-auto mb-10">
+          <table className="w-full text-left bg-gray-900/50 rounded-xl border border-gray-700">
+            <thead className="bg-gray-800 text-gray-300">
+              <tr>
+                <th className="py-3 px-4">Endpoint</th>
+                <th className="py-3 px-4">Description</th>
+              </tr>
             </thead>
-            <tbody>
-              <tr><td>POST /api/auth/register</td><td>Register user (employee/manager)</td></tr>
-              <tr><td>POST /api/auth/login</td><td>Login → returns JWT</td></tr>
-              <tr><td>GET /api/auth/me</td><td>Get current user</td></tr>
-              <tr><td>POST /api/attendance/checkin</td><td>Employee check-in</td></tr>
-              <tr><td>POST /api/attendance/checkout</td><td>Employee check-out</td></tr>
-              <tr><td>GET /api/attendance/my-history</td><td>Employee attendance list</td></tr>
-              <tr><td>GET /api/attendance/my-summary</td><td>Monthly summary for employee</td></tr>
-              <tr><td>GET /api/attendance/all</td><td>Manager: filtered attendance list</td></tr>
-              <tr><td>GET /api/attendance/export</td><td>Manager: CSV export (date range / employee)</td></tr>
+            <tbody className="text-gray-400">
+              {[
+                ["/api/auth/register", "Register employee / manager"],
+                ["/api/auth/login", "Login user"],
+                ["/api/attendance/checkin", "Employee check-in"],
+                ["/api/attendance/checkout", "Employee check-out"],
+                ["/api/attendance/my-summary", "Employee monthly summary"],
+                ["/api/attendance/all", "Manager team attendance"],
+                ["/api/attendance/export", "Manager CSV export"],
+              ].map(([ep, desc]) => (
+                <tr key={ep} className="border-t border-gray-700">
+                  <td className="py-3 px-4">{ep}</td>
+                  <td className="py-3 px-4">{desc}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
-        </section>
+        </div>
 
-        <section style={styles.section}>
-          <h3>Tech Stack</h3>
-          <ul>
-            <li>Backend: Node.js, Express, Mongoose (MongoDB)</li>
-            <li>Frontend: React (Vite), Redux Toolkit, React Router, Chart.js</li>
-            <li>Auth: JSON Web Tokens (JWT), bcrypt for password hashing</li>
-            <li>Dev tools: nodemon, axios, json2csv</li>
-          </ul>
-        </section>
+        {/* Setup Instructions */}
+        <h2 className="text-xl font-semibold mb-4 text-[#10b981]">⚙️ Setup Instructions</h2>
 
-        <section style={styles.section}>
-          <h3>How to run (quick)</h3>
-          <div style={styles.codeBlock}>
-            <strong>Backend</strong>
-            <pre>cd EMPLOYEE_MANAGEMENT/backend
-npm install
-# create .env (MONGO_URI, JWT_SECRET, PORT)
-npm run dev</pre>
-
-            <strong>Frontend</strong>
-            <pre>cd EMPLOYEE_MANAGEMENT/frontend
+        <div className="bg-gray-900/50 p-6 rounded-xl border border-gray-700">
+          <div>
+            <h3 className="font-semibold text-lg mb-2">Backend</h3>
+            <pre className="bg-gray-800 p-4 rounded-lg text-sm text-gray-300">
+cd backend
 npm install
 npm run dev
-# open http://localhost:5173</pre>
+            </pre>
           </div>
-        </section>
 
-        <section style={styles.section}>
-          <h3>Screenshots (include these in README / PDF)</h3>
-          <ol>
-            <li>Landing page</li>
-            <li>Employee - Dashboard (today status, check-in button)</li>
-            <li>Employee - History table</li>
-            <li>Employee - Monthly summary chart</li>
-            <li>Manager - Dashboard (team summary)</li>
-            <li>Manager - Team attendance (filtered view)</li>
-            <li>Manager - CSV export file (sample)</li>
-          </ol>
-        </section>
+          <div className="mt-4">
+            <h3 className="font-semibold text-lg mb-2">Frontend</h3>
+            <pre className="bg-gray-800 p-4 rounded-lg text-sm text-gray-300">
+cd frontend
+npm install
+npm run dev
+            </pre>
+          </div>
+        </div>
 
-        <section style={styles.section}>
-          <h3>Notes for evaluators</h3>
-          <ul>
-            <li>Late arrival logic: check-ins after 09:30 → status "late".</li>
-            <li>Half-day: total hours &lt; 4 at checkout marks "half-day".</li>
-            <li>Dates are stored as YYYY-MM-DD for easy aggregation.</li>
-            <li>CSV export streams a filtered dataset (no temp files).</li>
-          </ul>
-        </section>
+        {/* Footer */}
+        <div className="mt-10 flex items-center justify-between">
+          <Link
+            to="/"
+            className="px-4 py-2 bg-[#10b981] text-black rounded-lg font-semibold hover:bg-[#0e9c6b]"
+          >
+            ⬅ Back to Home
+          </Link>
 
-        <div style={styles.footerRow}>
-          <Link to="/" style={styles.linkBtn}>Back Home</Link>
-          <a href="#" onClick={(e)=>e.preventDefault()} style={styles.linkSecondary}>Contact: Arif (add phone in README)</a>
+          <div className="text-gray-500 text-sm">
+            Developed by <span className="text-gray-300 font-medium">Arif</span>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-const styles = {
-  wrap: { padding: 24, fontFamily: "Arial", display: "flex", justifyContent: "center" },
-  card: { maxWidth: 1000, width: "100%", background: "white", padding: 26, borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,0.06)", border: "1px solid #eee" },
-  title: { margin: 0, color: "#0b5ed7" },
-  lead: { color: "#444", marginTop: 8 },
-  section: { marginTop: 18 },
-  table: { width: "100%", borderCollapse: "collapse", marginTop: 8, border: "1px solid #eee" },
-  codeBlock: { background: "#f8f9fa", padding: 12, borderRadius: 6, marginTop: 8 },
-  footerRow: { marginTop: 18, display: "flex", gap: 12, alignItems: "center" },
-  linkBtn: { padding: "8px 12px", background: "#007bff", color: "white", textDecoration: "none", borderRadius: 6 },
-  linkSecondary: { color: "#6c757d", textDecoration: "none" }
-};
+function FeatureCard({ icon, title, items }) {
+  return (
+    <div className="bg-gray-900/50 p-6 rounded-xl border border-gray-700">
+      <div className="flex items-center gap-3 mb-3 text-[#10b981]">
+        {icon}
+        <h3 className="font-semibold text-lg">{title}</h3>
+      </div>
+      <ul className="text-gray-400 text-sm space-y-1">
+        {items.map((i, idx) => (
+          <li key={idx} className="flex items-center gap-2">
+            <FaCheckCircle size={12} className="text-green-500" /> {i}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

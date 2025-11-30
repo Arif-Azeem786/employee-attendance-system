@@ -1,162 +1,190 @@
+
 import React, { useEffect, useState } from "react";
 import axiosClient from "../../api/axiosClient";
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip as ReTooltip,
+  Legend,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from "recharts";
+
+/* color palette */
+const COLORS = {
+  present: "#10B981",
+  late: "#F59E0B",
+  "half-day": "#6366F1",
+  absent: "#EF4444",
+  default: "#94A3B8",
+};
+
+function toPieData(today) {
+  const present = Number(today?.present ?? 0);
+  const late = Number(today?.late ?? 0);
+  const halfDay = Number(today?.halfDay ?? today?.half_day ?? 0);
+  const absent = Number(today?.absent ?? 0);
+  return [
+    { name: "Present", key: "present", value: present },
+    { name: "Late", key: "late", value: late },
+    { name: "Half-day", key: "half-day", value: halfDay },
+    { name: "Absent", key: "absent", value: absent },
+  ].filter(d => typeof d.value === "number");
+}
 
 export default function ManagerDashboard() {
-  const [summary, setSummary] = useState(null);
-  const [todayStatus, setTodayStatus] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [exportMsg, setExportMsg] = useState("");
+  const [summary, setSummary] = useState({
+    totalEmployees: 0,
+    todays: { present: 0, absent: 0, late: 0 },
+    weeklyTrend: [],
+    departmentWise: [],
+  });
+  const [error, setError] = useState("");
 
-  const fetchData = async () => {
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    setError("");
     try {
-      setLoading(true);
-      const [sumRes, todayRes] = await Promise.all([
-        axiosClient.get("/api/attendance/summary"),
-        axiosClient.get("/api/attendance/today-status")
-      ]);
-      setSummary(sumRes.data.data);
-      setTodayStatus(todayRes.data.data);
+      // your existing endpoint (keeps behavior)
+      const res = await axiosClient.get("/api/attendance/summary");
+      const payload = res.data?.data ?? res.data ?? {};
+      // normalize names used in different shapes
+      const totalEmployees = payload.totalEmployees ?? payload.total_employees ?? payload.total ?? 0;
+      const today = payload.todays ?? payload.today ?? payload.todaySummary ?? payload.today_summary ?? {};
+      const weekly = payload.weeklyTrend ?? payload.weekly ?? payload.weekly_trend ?? [];
+      const dept = payload.departmentWise ?? payload.deptSummary ?? payload.department_summary ?? [];
+
+      setSummary({
+        totalEmployees,
+        todays: today,
+        weeklyTrend: weekly,
+        departmentWise: dept,
+      });
       setLoading(false);
     } catch (err) {
-      console.error(err);
+      console.error("Manager dashboard error", err);
+      setError(err?.response?.data?.message || "Failed to load manager dashboard");
       setLoading(false);
     }
-  };
+  }
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  if (loading) {
+    return <div className="min-h-[40vh] flex items-center justify-center text-gray-400">Loading manager dashboard...</div>;
+  }
 
-  const handleExport = async () => {
-    try {
-      setExportMsg("Exporting...");
-      // export entire month by default = last 7 days range (example)
-      const end = new Date();
-      const start = new Date();
-      start.setDate(end.getDate() - 7);
-
-      const format = (d) => {
-        const dt = new Date(d);
-        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-      };
-
-      const url = `/api/attendance/export?start=${format(start)}&end=${format(end)}`;
-      const res = await axiosClient.get(url, { responseType: "blob" });
-
-      // download blob
-      const blob = new Blob([res.data], { type: "text/csv" });
-      const link = document.createElement("a");
-      link.href = window.URL.createObjectURL(blob);
-      link.download = `attendance_export_${Date.now()}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
-      setExportMsg("Export downloaded");
-      setTimeout(() => setExportMsg(""), 3000);
-    } catch (err) {
-      console.error(err);
-      setExportMsg("Export failed");
-      setTimeout(() => setExportMsg(""), 3000);
-    }
-  };
-
-  if (loading) return <div style={{ padding: 20 }}>Loading manager dashboard…</div>;
+  const pieData = toPieData(summary.todays);
+  // weekly bar expects array of { date, present }
+  const weeklyBar = (summary.weeklyTrend || []).map(w => ({
+    name: (w.date || w.label || "").slice(5) || w.date || w.label || "",
+    present: Number(w.present ?? w.value ?? w.presentCount ?? 0),
+  }));
 
   return (
-    <div style={styles.container}>
-      <h2>Manager Dashboard</h2>
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-semibold">Manager Dashboard</h1>
+        <div className="text-sm text-gray-400">Team overview</div>
+      </div>
 
-      <div style={styles.row}>
-        <div style={styles.card}>
-          <h3>Total Employees</h3>
-          <p style={styles.big}>{summary?.totalEmployees ?? 0}</p>
+      {error && <div className="mb-4 p-3 rounded bg-red-900/30 text-red-300 text-sm">{error}</div>}
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+        <div className="card">
+          <div className="text-sm text-gray-400">Total employees</div>
+          <div className="text-2xl font-bold">{summary.totalEmployees ?? 0}</div>
         </div>
 
-        <div style={styles.card}>
-          <h3>Today's Attendance</h3>
-          <p>Present: <b>{summary?.todays?.present ?? 0}</b></p>
-          <p>Absent (approx): <b>{summary?.todays?.absent ?? 0}</b></p>
-          <p>Late: <b>{summary?.todays?.late ?? 0}</b></p>
+        <div className="card">
+          <div className="text-sm text-gray-400">Present today</div>
+          <div className="text-2xl font-bold">{summary.todays?.present ?? 0}</div>
         </div>
 
-        <div style={styles.card}>
-          <h3>Quick Actions</h3>
-          <p>
-            <a href="/manager/team">View Team Attendance</a>
-          </p>
-          <p>
-            <a href="/manager/reports">Reports & Export</a>
-          </p>
-          <button style={styles.actionBtn} onClick={handleExport}>Export last 7 days CSV</button>
-          {exportMsg && <div style={{ marginTop: 8 }}>{exportMsg}</div>}
+        <div className="card">
+          <div className="text-sm text-gray-400">Absent today</div>
+          <div className="text-2xl font-bold">{summary.todays?.absent ?? 0}</div>
+        </div>
+
+        <div className="card">
+          <div className="text-sm text-gray-400">Late today</div>
+          <div className="text-2xl font-bold">{summary.todays?.late ?? 0}</div>
         </div>
       </div>
 
-      <div style={styles.card}>
-        <h3>Late Arrivals Today (sample)</h3>
-        {todayStatus?.present?.length === 0 ? (
-          <p>No one present today.</p>
-        ) : (
-          <table style={styles.table}>
-            <thead>
-              <tr><th>Name</th><th>EmployeeId</th><th>CheckIn</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-              {todayStatus.present.slice(0, 10).map(p => (
-                <tr key={p.userId}>
-                  <td>{p.name}</td>
-                  <td>{p.employeeId}</td>
-                  <td>{p.checkInTime ? new Date(p.checkInTime).toLocaleTimeString() : '--'}</td>
-                  <td>{p.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div style={styles.card}>
-        <h3>Weekly Trend (recent)</h3>
-        {Array.isArray(summary?.weeklyTrend) && summary.weeklyTrend.length > 0 ? (
-          <div>
-            {summary.weeklyTrend.map(w => (
-              <div key={w.date} style={{ marginBottom: 6 }}>
-                <b>{w.date}</b> — Present: {w.present} / Recorded: {w.totalRecorded}
-              </div>
-            ))}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="card lg:col-span-2">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold">Weekly attendance trend</h3>
+            <div className="text-sm text-gray-400">Recent</div>
           </div>
-        ) : (
-          <p>No weekly data yet.</p>
-        )}
-      </div>
 
-      <div style={styles.card}>
-        <h3>Department-wise</h3>
-        {Array.isArray(summary?.departmentWise) && summary.departmentWise.length > 0 ? (
-          <table style={styles.table}>
-            <thead><tr><th>Department</th><th>Present</th><th>Total</th></tr></thead>
-            <tbody>
-              {summary.departmentWise.map(d => (
-                <tr key={d._id || d.department}>
-                  <td>{d._id || 'Unassigned'}</td>
-                  <td>{d.present}</td>
-                  <td>{d.total}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : <p>No department data.</p>}
+          {weeklyBar.length ? (
+            <div style={{ width: "100%", height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={weeklyBar} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#0f1724" />
+                  <XAxis dataKey="name" tick={{ fill: "#94a3b8" }} />
+                  <YAxis tick={{ fill: "#94a3b8" }} />
+                  <ReTooltip />
+                  <Bar dataKey="present" fill={COLORS.present} barSize={14} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-400">No weekly data available.</div>
+          )}
+
+          <div className="mt-4">
+            <h4 className="text-sm text-gray-300 mb-2">Department summary</h4>
+            <div className="space-y-2">
+              {(summary.departmentWise || []).length ? summary.departmentWise.map((d, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <div className="text-sm text-gray-300">{d._id ?? d.department ?? `Dept ${i+1}`}</div>
+                  <div className="text-sm font-medium">{d.present ?? d.presentCount ?? 0} present</div>
+                </div>
+              )) : <div className="text-sm text-gray-400">No department data</div>}
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <h3 className="font-semibold mb-3">Today distribution</h3>
+
+          {pieData && pieData.length ? (
+            <div style={{ width: "100%", height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="45%"
+                    outerRadius={70}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {pieData.map(entry => {
+                      const key = entry.key ?? entry.name.toLowerCase();
+                      return <Cell key={entry.name} fill={COLORS[key] ?? COLORS.default} />;
+                    })}
+                  </Pie>
+                  <ReTooltip />
+                  <Legend verticalAlign="bottom" height={36} wrapperStyle={{ color: "#94a3b8" }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-400">No today stats available.</div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-
-const styles = {
-  container: { maxWidth: 1000, margin: "24px auto", fontFamily: "Arial", padding: 12 },
-  row: { display: "flex", gap: 12, marginBottom: 12 },
-  card: { flex: 1, padding: 12, border: "1px solid #ddd", borderRadius: 8, marginBottom: 12 },
-  big: { fontSize: 28, margin: 0 },
-  table: { width: "100%", borderCollapse: "collapse" },
-  actionBtn: { marginTop: 8, padding: "8px 12px", background: "#007bff", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }
-};

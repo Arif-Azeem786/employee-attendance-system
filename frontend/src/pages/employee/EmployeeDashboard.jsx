@@ -1,160 +1,257 @@
+
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 
+/* small format helpers */
+function fmtDate(d) {
+  if (!d) return "—";
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt)) return d;
+    return dt.toLocaleDateString();
+  } catch {
+    return d;
+  }
+}
+function fmtTime(d) {
+  if (!d) return "—";
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt)) return d;
+    return dt.toLocaleTimeString();
+  } catch {
+    return d;
+  }
+}
+
 export default function EmployeeDashboard() {
-  const [today, setToday] = useState(null);
-  const [summary, setSummary] = useState(null);
-  const [recent, setRecent] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState("");
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-
-      // 1) Today's status
-      const todayRes = await axiosClient.get("/api/attendance/today");
-      setToday(todayRes.data.data);
-
-      // 2) Monthly summary
-      const summaryRes = await axiosClient.get("/api/attendance/my-summary");
-      setSummary(summaryRes.data.data);
-
-      // 3) Recent history (last 7 days)
-      const historyRes = await axiosClient.get("/api/attendance/my-history?limit=7");
-      setRecent(historyRes.data.data.items);
-
-      setLoading(false);
-    } catch (err) {
-      console.log(err);
-      setLoading(false);
-    }
-  };
+  const [error, setError] = useState("");
+  // today: attendance for today (status, checkInTime, checkOutTime, totalHours)
+  // monthly: present/absent/late/halfDay/totalHours
+  // recent: array of attendance rows
+  const [today, setToday] = useState(null);
+  const [monthly, setMonthly] = useState({});
+  const [recent, setRecent] = useState([]);
+  const [actionLoading, setActionLoading] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    fetchData();
+    fetchAll();
+    // eslint-disable-next-line
   }, []);
 
-  // CHECK-IN
-  const handleCheckIn = async () => {
-    setMsg("");
+  async function fetchAll() {
+    setLoading(true);
+    setError("");
     try {
-      const res = await axiosClient.post("/api/attendance/checkin");
-      setMsg(res.data.message);
-      fetchData();
-    } catch (err) {
-      setMsg(err.response?.data?.message || "Check-in failed");
-    }
-  };
+      // request three endpoints in parallel
+      const [todayRes, summaryRes, historyRes] = await Promise.allSettled([
+        axiosClient.get("/api/attendance/today"),
+        axiosClient.get("/api/attendance/my-summary"),
+        axiosClient.get("/api/attendance/my-history?limit=7")
+      ]);
 
-  // CHECK-OUT
-  const handleCheckOut = async () => {
-    setMsg("");
+      // TODAY
+      if (todayRes.status === "fulfilled" && todayRes.value?.data?.success !== false) {
+        const payload = todayRes.value.data?.data ?? todayRes.value.data ?? {};
+        setToday({
+          status: payload.status ?? payload.attendanceStatus ?? payload.state ?? "Not Checked In",
+          checkInTime: payload.checkInTime ?? payload.checkIn ?? null,
+          checkOutTime: payload.checkOutTime ?? payload.checkOut ?? null,
+          totalHours: payload.totalHours ?? payload.hours ?? 0
+        });
+      } else {
+        setToday(null);
+      }
+
+      // MONTHLY / SUMMARY
+      if (summaryRes.status === "fulfilled" && summaryRes.value?.data?.success !== false) {
+        const payload = summaryRes.value.data?.data ?? summaryRes.value.data ?? {};
+        setMonthly({
+          present: payload.present ?? payload.presentDays ?? 0,
+          absent: payload.absent ?? payload.absentDays ?? 0,
+          late: payload.late ?? 0,
+          halfDay: payload.halfDay ?? payload.half_day ?? payload.halfDays ?? 0,
+          totalHours: payload.totalHours ?? payload.total_hours ?? 0
+        });
+      } else {
+        setMonthly({});
+      }
+
+      // RECENT HISTORY (last 7)
+      if (historyRes.status === "fulfilled" && historyRes.value?.data?.success !== false) {
+        // Accept several shapes: { data: { items: [...] } } or { data: [...] } or { items: [...] }
+        const res = historyRes.value.data;
+        let items = [];
+        if (Array.isArray(res?.data)) items = res.data;
+        else if (Array.isArray(res?.items)) items = res.items;
+        else if (Array.isArray(res?.data?.items)) items = res.data.items;
+        else if (Array.isArray(res?.data?.data)) items = res.data.data;
+        else items = res?.data ?? res?.items ?? [];
+
+        // normalize each record to have: date, status, checkInTime, checkOutTime, totalHours
+        const normalized = (items || []).map((r) => ({
+          _id: r._id || r.id || `${r.date}_${r.userId || ""}`,
+          date: r.date ?? r.day ?? r.createdAt ?? null,
+          status: r.status ?? r.attendanceStatus ?? r.state ?? "—",
+          checkInTime: r.checkInTime ?? r.checkIn ?? r.in ?? null,
+          checkOutTime: r.checkOutTime ?? r.checkOut ?? r.out ?? null,
+          totalHours: r.totalHours ?? r.hours ?? r.duration ?? 0
+        }));
+        setRecent(normalized);
+      } else {
+        setRecent([]);
+      }
+
+      setLoading(false);
+    } catch (err) {
+      console.error("Dashboard fetch error", err);
+      setError("Network error fetching dashboard");
+      setLoading(false);
+    }
+  }
+
+  async function doAction(action) {
+    setActionLoading(true);
+    setError("");
     try {
-      const res = await axiosClient.post("/api/attendance/checkout");
-      setMsg(res.data.message);
-      fetchData();
+      const res = await axiosClient.post(`/api/attendance/${action}`);
+      if (!res.data?.success) {
+        setError(res.data?.message || "Action failed");
+        setActionLoading(false);
+        return;
+      }
+      // refresh dashboard after action
+      await fetchAll();
+      setActionLoading(false);
     } catch (err) {
-      setMsg(err.response?.data?.message || "Check-out failed");
+      console.error("Attendance action error", err);
+      setError(err.response?.data?.message || "Network error");
+      setActionLoading(false);
     }
-  };
-  
-<p><a href="/employee/history">View Full History</a>
-<p><a href="/employee/summary">View Monthly Summary & Charts</a></p>
-</p>
+  }
 
-  if (loading) return <div style={{ padding: 20 }}>Loading dashboard…</div>;
+  if (loading) {
+    return <div className="min-h-[50vh] flex items-center justify-center text-gray-400">Loading dashboard...</div>;
+  }
 
   return (
-    <div style={styles.container}>
-      <h2>Employee Dashboard</h2>
-
-      {msg && <p style={{ color: "green" }}>{msg}</p>}
-
-      {/* Today's Status */}
-      <div style={styles.card}>
-        <h3>Today's Status</h3>
-        <p>Status: <b>{today?.status}</b></p>
-
-        <p>Check-In: {today?.checkInTime ? new Date(today.checkInTime).toLocaleTimeString() : "--"}</p>
-        <p>Check-Out: {today?.checkOutTime ? new Date(today.checkOutTime).toLocaleTimeString() : "--"}</p>
-
-        {/* Quick Check-In / Out */}
-        {today?.checkInTime ? (
-          today.checkOutTime ? (
-            <p style={{ color: "green" }}>✔ You already checked out</p>
-          ) : (
-            <button style={styles.button} onClick={handleCheckOut}>
-              Check Out
-            </button>
-          )
-        ) : (
-          <button style={styles.button} onClick={handleCheckIn}>
-            Check In
-          </button>
-        )}
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-semibold">Employee Dashboard</h1>
+        <div className="text-sm text-gray-400">Welcome back</div>
       </div>
 
-      {/* Monthly Summary */}
-      <div style={styles.card}>
-        <h3>Monthly Summary</h3>
-        <p>Present: {summary?.present}</p>
-        <p>Late: {summary?.late}</p>
-        <p>Half-Day: {summary?.halfDay}</p>
-        <p>Absent: {summary?.absent}</p>
-        <p>Total Hours: {summary?.totalHours}</p>
+      {error && <div className="mb-4 p-3 rounded bg-red-900/30 text-red-300 text-sm">{error}</div>}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Today's status */}
+        <div className="card">
+          <h3 className="font-semibold mb-3">Today's Status</h3>
+          <div className="text-sm text-gray-300 space-y-2">
+            <div><span className="text-gray-400">Status: </span><span className="font-medium">{today?.status || "Not Checked In"}</span></div>
+            <div><span className="text-gray-400">Check-In: </span><span className="font-medium">{today?.checkInTime ? fmtTime(today.checkInTime) : "—"}</span></div>
+            <div><span className="text-gray-400">Check-Out: </span><span className="font-medium">{today?.checkOutTime ? fmtTime(today.checkOutTime) : "—"}</span></div>
+            <div><span className="text-gray-400">Total Hours: </span><span className="font-medium">{today?.totalHours ?? "—"}</span></div>
+          </div>
+
+          <div className="mt-4 flex gap-3">
+            {!today?.checkInTime && (
+              <button
+                onClick={() => doAction("checkin")}
+                disabled={actionLoading}
+                className="bg-brand-fallback hover:bg-[#0ea36b] text-black px-4 py-2 rounded font-medium"
+              >
+                {actionLoading ? "Processing..." : "Check In"}
+              </button>
+            )}
+
+            {today?.checkInTime && !today?.checkOutTime && (
+              <button
+                onClick={() => doAction("checkout")}
+                disabled={actionLoading}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-medium"
+              >
+                {actionLoading ? "Processing..." : "Check Out"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Monthly summary */}
+        <div className="card">
+          <h3 className="font-semibold mb-3">This Month</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 bg-gray-900 rounded">
+              <div className="text-sm text-gray-300">Present</div>
+              <div className="text-xl font-bold">{monthly.present ?? 0}</div>
+            </div>
+            <div className="p-3 bg-gray-900 rounded">
+              <div className="text-sm text-gray-300">Absent</div>
+              <div className="text-xl font-bold">{monthly.absent ?? 0}</div>
+            </div>
+            <div className="p-3 bg-gray-900 rounded">
+              <div className="text-sm text-gray-300">Late</div>
+              <div className="text-xl font-bold">{monthly.late ?? 0}</div>
+            </div>
+            <div className="p-3 bg-gray-900 rounded">
+              <div className="text-sm text-gray-300">Half-Day</div>
+              <div className="text-xl font-bold">{monthly.halfDay ?? 0}</div>
+            </div>
+          </div>
+
+          <div className="mt-4 text-sm text-gray-400">
+            <div>Total hours: <span className="font-medium">{monthly.totalHours ?? 0}</span></div>
+          </div>
+        </div>
+
+        {/* Quick actions */}
+        <div className="card">
+          <h3 className="font-semibold mb-3">Quick Actions</h3>
+          <div className="flex flex-col gap-3">
+            <button onClick={() => navigate("/employee/history")} className="text-left bg-gray-700/30 px-3 py-2 rounded hover:bg-gray-700">View History</button>
+            <button onClick={() => navigate("/employee/summary")} className="text-left bg-gray-700/30 px-3 py-2 rounded hover:bg-gray-700">View Summary</button>
+            <button onClick={() => navigate("/employee/calendar")} className="text-left bg-gray-700/30 px-3 py-2 rounded hover:bg-gray-700">Open Calendar</button>
+          </div>
+        </div>
       </div>
 
-      {/* Recent Attendance */}
-      <div style={styles.card}>
-        <h3>Last 7 Days</h3>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Status</th>
-              <th>Hours</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recent.map((row) => (
-              <tr key={row._id}>
-                <td>{row.date}</td>
-                <td>{row.status}</td>
-                <td>{row.totalHours}</td>
+      {/* Last 7 days */}
+      <div className="mt-6 card">
+        <h3 className="font-semibold mb-3">Recent Attendance (Last 7 Days)</h3>
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-gray-400">
+              <tr>
+                <th className="py-2 pr-4">Date</th>
+                <th className="py-2 pr-4">Status</th>
+                <th className="py-2 pr-4">Check-In</th>
+                <th className="py-2 pr-4">Check-Out</th>
+                <th className="py-2 pr-4">Hours</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {recent && recent.length ? (
+                recent.map((r) => (
+                  <tr key={r._id} className="border-t border-gray-700">
+                    <td className="py-2">{fmtDate(r.date)}</td>
+                    <td className="py-2">{r.status}</td>
+                    <td className="py-2">{r.checkInTime ? fmtTime(r.checkInTime) : "—"}</td>
+                    <td className="py-2">{r.checkOutTime ? fmtTime(r.checkOutTime) : "—"}</td>
+                    <td className="py-2">{r.totalHours ?? 0}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className="py-4 text-gray-400 text-center">No recent records</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
-
-const styles = {
-  container: {
-    maxWidth: "700px",
-    margin: "30px auto",
-    padding: "20px",
-    fontFamily: "Arial"
-  },
-  card: {
-    padding: "20px",
-    borderRadius: "8px",
-    border: "1px solid #ddd",
-    marginBottom: "20px",
-  },
-  button: {
-    padding: "10px 20px",
-    background: "#007bff",
-    color: "white",
-    border: "none",
-    borderRadius: "5px",
-    cursor: "pointer",
-    marginTop: "10px"
-  },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse"
-  }
-};

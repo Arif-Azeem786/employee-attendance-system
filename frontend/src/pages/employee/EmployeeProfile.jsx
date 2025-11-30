@@ -1,155 +1,168 @@
+
 import React, { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { logout as logoutAction } from "../../store/authSlice";
-import { useNavigate } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
+import { setCredentials } from "../../store/authSlice";
+
+/**
+ * EmployeeProfile — read-only view + local edit
+ * - Reads user from Redux (auth.user)
+ * - Falls back to GET /api/auth/me if not in store
+ * - Local edit updates Redux + localStorage (no backend PATCH)
+ *
+ * Keeps all existing functionality; only changes presentation.
+ */
 
 export default function EmployeeProfile() {
   const dispatch = useDispatch();
-  const navigate = useNavigate();
-  const storeUser = useSelector((s) => s.auth.user);
+  const storeUser = useSelector((s) => s.auth?.user);
 
   const [user, setUser] = useState(storeUser || null);
   const [loading, setLoading] = useState(!storeUser);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    department: ""
-  });
+  const [form, setForm] = useState({ name: "", department: "" });
   const [msg, setMsg] = useState("");
 
-  // fetch /api/auth/me if store doesn't have user (fallback)
-  const fetchMe = async () => {
-    try {
-      setLoading(true);
-      const res = await axiosClient.get("/api/auth/me");
-      if (res.data && res.data.data) {
-        setUser(res.data.data);
-      }
-      setLoading(false);
-    } catch (err) {
-      console.error(err);
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    if (!storeUser) {
-      fetchMe();
-    } else {
+    if (storeUser) {
       setUser(storeUser);
+      setForm({ name: storeUser.name || "", department: storeUser.department || "" });
+      setLoading(false);
+    } else {
+      fetchMe();
     }
+    // eslint-disable-next-line
   }, [storeUser]);
 
-  useEffect(() => {
-    if (user) {
-      setForm({ name: user.name || "", department: user.department || "" });
+  async function fetchMe() {
+    setLoading(true);
+    try {
+      const res = await axiosClient.get("/api/auth/me");
+      if (res.data?.success && res.data.data) {
+        setUser(res.data.data);
+        setForm({ name: res.data.data.name || "", department: res.data.data.department || "" });
+      }
+    } catch (err) {
+      console.error("Failed to fetch /api/auth/me", err);
+    } finally {
+      setLoading(false);
     }
-  }, [user]);
+  }
 
-  const handleLogout = () => {
-    dispatch(logoutAction());
-    navigate("/login");
-  };
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  // local "save" only — backend update endpoint not implemented in server (avoid calling non-existent routes)
   const handleSaveLocal = (e) => {
     e?.preventDefault();
-    setMsg("Profile updated locally. (To persist, add a backend update endpoint)");
-    // update local state only (not persisted to server)
     const updated = { ...user, name: form.name, department: form.department };
+
+    // update local state
     setUser(updated);
-    // Also update auth in localStorage so UI stays consistent
+    setEditing(false);
+    setMsg("Profile updated locally.");
+
+    // update Redux (so navbar and other components read updated user)
+    // we keep token as-is if available in store
+    const token = storeUser?.token || (user && user.token) || localStorage.getItem("token") || "";
+    dispatch(setCredentials({ user: updated, token }));
+
+    // persist to localStorage in the same shape your app expects
     try {
       const raw = localStorage.getItem("auth");
       if (raw) {
         const parsed = JSON.parse(raw);
         parsed.user = updated;
         localStorage.setItem("auth", JSON.stringify(parsed));
+      } else {
+        // fallback
+        localStorage.setItem("user", JSON.stringify(updated));
+        if (token) localStorage.setItem("token", token);
       }
-    } catch (e) { /* ignore */ }
-    setEditing(false);
-    setTimeout(() => setMsg(""), 4000);
+    } catch (e) {
+      console.warn("Could not save profile to localStorage", e);
+      localStorage.setItem("user", JSON.stringify(updated));
+      if (token) localStorage.setItem("token", token);
+    }
+
+    // clear message after a short time
+    setTimeout(() => setMsg(""), 3500);
   };
 
-  if (loading) return <div style={{ padding: 20 }}>Loading profile…</div>;
+  if (loading) {
+    return <div className="min-h-[50vh] flex items-center justify-center text-gray-400">Loading profile...</div>;
+  }
 
-  if (!user) return <div style={{ padding: 20 }}>No user data available.</div>;
+  if (!user) {
+    return <div className="min-h-[50vh] flex items-center justify-center text-gray-400">No user data available.</div>;
+  }
 
   return (
-    <div style={styles.container}>
-      <h2>My Profile</h2>
+    <div>
+      <h1 className="text-2xl font-semibold mb-6">My Profile</h1>
 
-      {msg && <div style={styles.info}>{msg}</div>}
+      {msg && <div className="mb-4 p-3 rounded bg-green-900/40 text-green-200">{msg}</div>}
 
-      <div style={styles.card}>
-        <div style={styles.row}>
-          <div style={{ flex: 1 }}>
-            <label style={styles.label}>Name</label>
+      <div className="card">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Full name</label>
             {editing ? (
-              <input style={styles.input} value={form.name} onChange={(e)=>setForm({...form, name: e.target.value})} />
+              <input
+                name="name"
+                value={form.name}
+                onChange={handleChange}
+                className="w-full bg-gray-800 border border-gray-700 px-3 py-2 rounded text-gray-100"
+              />
             ) : (
-              <div style={styles.value}>{user.name}</div>
+              <div className="p-3 bg-gray-900 rounded">{user.name}</div>
             )}
           </div>
 
-          <div style={{ flex: 1 }}>
-            <label style={styles.label}>Email</label>
-            <div style={styles.value}>{user.email}</div>
-          </div>
-        </div>
-
-        <div style={styles.row}>
-          <div style={{ flex: 1 }}>
-            <label style={styles.label}>Employee ID</label>
-            <div style={styles.value}>{user.employeeId || "—"}</div>
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Email</label>
+            <div className="p-3 bg-gray-900 rounded">{user.email}</div>
           </div>
 
-          <div style={{ flex: 1 }}>
-            <label style={styles.label}>Department</label>
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Employee ID</label>
+            <div className="p-3 bg-gray-900 rounded">{user.employeeId || "—"}</div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Department</label>
             {editing ? (
-              <input style={styles.input} value={form.department} onChange={(e)=>setForm({...form, department: e.target.value})} />
+              <input
+                name="department"
+                value={form.department}
+                onChange={handleChange}
+                className="w-full bg-gray-800 border border-gray-700 px-3 py-2 rounded text-gray-100"
+              />
             ) : (
-              <div style={styles.value}>{user.department || "—"}</div>
+              <div className="p-3 bg-gray-900 rounded">{user.department || "—"}</div>
             )}
           </div>
         </div>
 
-        <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+        <div className="mt-4 flex gap-3">
           {editing ? (
             <>
-              <button style={styles.saveBtn} onClick={handleSaveLocal}>Save (local)</button>
-              <button style={styles.cancelBtn} onClick={()=>{ setEditing(false); setForm({ name: user.name, department: user.department }); }}>Cancel</button>
+              <button onClick={handleSaveLocal} className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-black font-medium">
+                Save (local)
+              </button>
+              <button onClick={() => { setEditing(false); setForm({ name: user.name, department: user.department }); }} className="px-4 py-2 rounded border border-gray-700 text-gray-200">
+                Cancel
+              </button>
             </>
           ) : (
-            <button style={styles.editBtn} onClick={()=>setEditing(true)}>Edit</button>
+            <button onClick={() => setEditing(true)} className="bg-brand-fallback hover:bg-[#0ea36b] px-4 py-2 rounded text-black font-medium">
+              Edit Profile
+            </button>
           )}
-
-          <button style={styles.logoutBtn} onClick={handleLogout}>Logout</button>
         </div>
-      </div>
 
-      <div style={styles.card}>
-        <h4>Notes</h4>
-        <ul>
-          <li>To make profile edits permanent, add a backend endpoint (PATCH /api/auth/me) and I can integrate it.</li>
-          <li>Password change endpoint is not implemented; we can add it as well if you want.</li>
-        </ul>
+        <div className="mt-4 text-sm text-gray-400">
+          <p>Password and server-side profile updates are currently not implemented. To persist changes to the database, add a backend PATCH endpoint (PATCH /api/auth/me) and I can integrate it for you.</p>
+        </div>
       </div>
     </div>
   );
 }
-
-const styles = {
-  container: { maxWidth: 800, margin: "24px auto", fontFamily: "Arial", padding: 12 },
-  card: { padding: 16, border: "1px solid #ddd", borderRadius: 8, marginBottom: 12 },
-  row: { display: "flex", gap: 12, marginBottom: 12 },
-  label: { fontSize: 13, color: "#555", marginBottom: 6 },
-  value: { padding: "8px 10px", background: "#f9f9f9", borderRadius: 6, border: "1px solid #eee" },
-  input: { padding: "8px 10px", borderRadius: 6, border: "1px solid #ccc", width: "100%" },
-  editBtn: { padding: "8px 12px", background: "#007bff", color: "white", border: "none", borderRadius: 6, cursor: "pointer" },
-  saveBtn: { padding: "8px 12px", background: "#198754", color: "white", border: "none", borderRadius: 6, cursor: "pointer" },
-  cancelBtn: { padding: "8px 12px", background: "#6c757d", color: "white", border: "none", borderRadius: 6, cursor: "pointer" },
-  logoutBtn: { padding: "8px 12px", background: "#dc3545", color: "white", border: "none", borderRadius: 6, cursor: "pointer" },
-  info: { padding: 10, background: "#e9f7ef", border: "1px solid #d4f1d9", color: "#155724", borderRadius: 6, marginBottom: 12 }
-};

@@ -188,6 +188,82 @@ const todayStatus = async (req, res) => {
 
 // GET /api/attendance/all
 // supports filters: employeeId (EMP###) or userId, date (YYYY-MM-DD), status, page, limit
+// const getAll = async (req, res) => {
+//   try {
+//     const { page = 1, limit = 50, employeeId, userId, date, status } = req.query;
+//     const filter = {};
+
+//     if (employeeId) {
+//       const user = await User.findOne({ employeeId });
+//       if (!user) return res.status(404).json({ success: false, message: 'Employee not found' });
+//       filter.userId = user._id;
+//     }
+//     if (userId) filter.userId = userId;
+//     if (date) filter.date = date;
+//     if (status) filter.status = status;
+
+//     const skip = (Number(page) - 1) * Number(limit);
+
+//     const items = await Attendance.find(filter)
+//       .sort({ date: -1 })
+//       .skip(skip)
+//       .limit(Number(limit))
+//       .populate('userId', 'name email employeeId department');
+
+//     const total = await Attendance.countDocuments(filter);
+
+//     return res.json({
+//       success: true,
+//       data: { items, total, page: Number(page), limit: Number(limit) }
+//     });
+//   } catch (error) {
+//     console.error('GetAll error:', error);
+//     return res.status(500).json({ success: false, message: 'Server error fetching all attendance' });
+//   }
+// };
+// GET /api/attendance/all
+// const getAll = async (req, res) => {
+//   try {
+//     const { page = 1, limit = 50, employeeId, userId, date, status } = req.query;
+//     const filter = {};
+
+//     if (employeeId) {
+//       const user = await User.findOne({ employeeId });
+//       if (!user) return res.status(404).json({ success: false, message: 'Employee not found' });
+//       filter.userId = user._id;
+//     }
+//     if (userId) filter.userId = userId;
+//     if (date) filter.date = date;
+//     if (status) filter.status = status;
+
+//     const skip = (Number(page) - 1) * Number(limit);
+
+//     const items = await Attendance.find(filter)
+//       .sort({ date: -1 })
+//       .skip(skip)
+//       .limit(Number(limit))
+//       .populate('userId', 'name email employeeId department');
+
+//     const total = await Attendance.countDocuments(filter);
+
+//     // transform so frontend can use either `userId` or `user`
+//     const transformed = items.map(i => {
+//       // convert mongoose doc to plain object (safest)
+//       const obj = (typeof i.toObject === 'function') ? i.toObject() : JSON.parse(JSON.stringify(i));
+//       obj.user = obj.userId || null; // alias
+//       return obj;
+//     });
+
+//     return res.json({
+//       success: true,
+//       data: { items: transformed, total, page: Number(page), limit: Number(limit) }
+//     });
+//   } catch (error) {
+//     console.error('GetAll error:', error);
+//     return res.status(500).json({ success: false, message: 'Server error fetching all attendance' });
+//   }
+// };
+// GET /api/attendance/all
 const getAll = async (req, res) => {
   try {
     const { page = 1, limit = 50, employeeId, userId, date, status } = req.query;
@@ -212,15 +288,24 @@ const getAll = async (req, res) => {
 
     const total = await Attendance.countDocuments(filter);
 
+    // transform so frontend can use either `userId` or `user`
+    const transformed = items.map(i => {
+      // convert mongoose doc to plain object (safest)
+      const obj = (typeof i.toObject === 'function') ? i.toObject() : JSON.parse(JSON.stringify(i));
+      obj.user = obj.userId || null; // alias
+      return obj;
+    });
+
     return res.json({
       success: true,
-      data: { items, total, page: Number(page), limit: Number(limit) }
+      data: { items: transformed, total, page: Number(page), limit: Number(limit) }
     });
   } catch (error) {
     console.error('GetAll error:', error);
     return res.status(500).json({ success: false, message: 'Server error fetching all attendance' });
   }
 };
+
 
 // GET /api/attendance/employee/:id  (id can be userId or employeeId e.g., EMP0001)
 const getEmployee = async (req, res) => {
@@ -293,15 +378,52 @@ const teamSummary = async (req, res) => {
       }
     ]);
 
+    // return res.json({
+    //   success: true,
+    //   data: {
+    //     totalEmployees,
+    //     todays: { present, absent, late },
+    //     weeklyTrend: trend,
+    //     departmentWise: deptAgg
+    //   }
+    // });
+    // return res.json({
+    //   success: true,
+    //   data: {
+    //     totalEmployees,
+
+    //     // todays vs today (both for frontend compatibility)
+    //     today: { present, absent, late },
+    //     todays: { present, absent, late },
+
+    //     // weekly trend - keep original name and alias
+    //     weeklyTrend: trend,
+    //     weekly: trend,
+
+    //     // department aggregation - keep original and alias
+    //     departmentWise: deptAgg,
+    //     deptSummary: deptAgg
+    //   }
+    // });
     return res.json({
       success: true,
       data: {
         totalEmployees,
+
+        // todays vs today (both for frontend compatibility)
+        today: { present, absent, late },
         todays: { present, absent, late },
+
+        // weekly trend - keep original name and alias
         weeklyTrend: trend,
-        departmentWise: deptAgg
+        weekly: trend,
+
+        // department aggregation - keep original and alias
+        departmentWise: deptAgg,
+        deptSummary: deptAgg
       }
     });
+
   } catch (error) {
     console.error('TeamSummary error:', error);
     return res.status(500).json({ success: false, message: 'Server error fetching team summary' });
@@ -363,14 +485,31 @@ const todayTeamStatus = async (req, res) => {
   try {
     const today = formatDateYMD();
     const arr = await Attendance.find({ date: today }).populate('userId', 'name email employeeId department');
+    // const present = arr.filter(a => ['present', 'late'].includes(a.status)).map(a => ({
+    //   userId: a.userId._id,
+    //   name: a.userId.name,
+    //   employeeId: a.userId.employeeId,
+    //   checkInTime: a.checkInTime,
+    //   status: a.status
+    // }));
+    // const present = arr.filter(a => ['present', 'late'].includes(a.status)).map(a => ({
+    //   userId: a.userId._id,
+    //   user: a.userId, // alias for frontend convenience
+    //   name: a.userId.name,
+    //   employeeId: a.userId.employeeId,
+    //   checkInTime: a.checkInTime,
+    //   status: a.status
+    // }));
     const present = arr.filter(a => ['present', 'late'].includes(a.status)).map(a => ({
       userId: a.userId._id,
+      user: a.userId, // alias for frontend convenience
       name: a.userId.name,
       employeeId: a.userId.employeeId,
       checkInTime: a.checkInTime,
       status: a.status
     }));
-
+    
+    
     // absent employees calculation: all employees not in arr
     const presentUserIds = arr.map(a => a.userId._id.toString());
     const allEmployees = await User.find({ role: 'employee' }).select('name employeeId _id');
